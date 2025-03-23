@@ -161,3 +161,5 @@ if __name__ == "__main__":
         application_link="https://example.com/apply/123",
         status="Applied"
     )
+
+# NEED AN API IN ORDER TO MAKE IT WORK PROPERLY
