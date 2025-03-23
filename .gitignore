@@ -8,3 +8,4 @@ secrets.config
 secrets.config
 env
 
+__pycache__
