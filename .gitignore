@@ -1,0 +1,10 @@
+env/
+./env/
+env
+
+secrets.config
+./secrets.config 
+
+secrets.config
+env
+
