@@ -13,10 +13,9 @@ It uses Selenium WebDriver (configured for Safari) to:
 If a two-step verification prompt is detected during login, the script will prompt the
 user via the console for the verification code.
 
-Additionally, during the application process, if the modal asks questions (e.g. “Number
-of years coding in React”), the script looks up the question in a local SQLite database
-(stored in Resources/questions.db). If the question is not found, the user is prompted
-to input an answer, which is then saved in the database for future use.
+During the application process, if additional questions (e.g. "Years coding in React")
+are encountered, the driver checks a local SQLite database (Resources/questions.db) for an answer.
+If no answer exists, the user is prompted via the console, and the answer is saved for future use.
 
 Detailed logging is provided throughout for debugging purposes.
 """
@@ -26,6 +25,7 @@ import os
 import sqlite3
 import time
 from typing import Dict
+
 from selenium import webdriver
 from selenium.webdriver.remote.webdriver import WebDriver
 from selenium.webdriver.common.by import By
@@ -33,7 +33,7 @@ from selenium.webdriver.common.keys import Keys
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 
-# Configure logging. The front-end controls the root logger level.
+# Configure logging (front-end controls overall log level).
 logging.basicConfig(
     level=logging.DEBUG,
     format="%(asctime)s [%(levelname)s] %(message)s",
@@ -44,17 +44,19 @@ logger = logging.getLogger(__name__)
 
 def read_secrets(file_path: str = "secrets.config") -> Dict[str, str]:
     """
-    Read LinkedIn credentials from a configuration file.
+    Read LinkedIn credentials and settings from a configuration file.
 
     The file should contain lines in the following format:
         username_linkedin=your_email@example.com
         password_linkedin=your_password
+        spreadsheet_tracker=YOUR_EDITABLE_SHEET_URL
 
     Args:
         file_path (str): Path to the configuration file.
 
     Returns:
-        Dict[str, str]: A dictionary with keys 'username_linkedin' and 'password_linkedin'.
+        Dict[str, str]: A dictionary with keys 'username_linkedin',
+                        'password_linkedin', and 'spreadsheet_tracker'.
     """
     logger.debug("Reading secrets from %s", file_path)
     secrets: Dict[str, str] = {}
@@ -108,7 +110,6 @@ def login_to_linkedin(driver: WebDriver) -> None:
     password_input.send_keys(Keys.RETURN)
     logger.info("Submitted login credentials")
     
-    # Allow time for potential two-step verification prompt.
     time.sleep(3)
     try:
         logger.debug("Checking for two-step verification prompt")
@@ -140,9 +141,9 @@ def process_application_questions(driver: WebDriver) -> None:
     Process application questions in the "Easy Apply" modal.
 
     Searches for question groups (each containing a label and an input or textarea).
-    For each question, if an answer exists in the local database (Resources/questions.db),
-    that answer is used to fill in the input. If not, the user is prompted for an answer,
-    which is then saved in the database for future use.
+    For each question, if an answer exists in the local SQLite database (Resources/questions.db),
+    that answer is used to fill in the field. If no answer exists, the user is prompted via
+    the console, and the provided answer is saved to the database.
 
     Args:
         driver (WebDriver): Selenium WebDriver instance.
@@ -155,7 +156,6 @@ def process_application_questions(driver: WebDriver) -> None:
     conn.commit()
 
     try:
-        # Adjust the CSS selector based on the current LinkedIn modal structure.
         question_groups = driver.find_elements(By.CSS_SELECTOR, "div.jobs-easy-apply-form-section__group")
         logger.debug("Found %d question groups", len(question_groups))
         for group in question_groups:
@@ -165,7 +165,6 @@ def process_application_questions(driver: WebDriver) -> None:
                 if not question_text:
                     continue
                 logger.debug("Processing question: %s", question_text)
-                # Try to find an input field; if not, try a textarea.
                 try:
                     input_field = group.find_element(By.TAG_NAME, "input")
                 except Exception:
@@ -272,7 +271,6 @@ def apply_to_jobs(job_title: str, location: str, auto_apply: bool = True) -> Non
                         logger.debug("[Job %d] Application modal is visible.", index + 1)
                         time.sleep(1)
                         
-                        # Process additional application questions, if any.
                         process_application_questions(driver)
                         
                         try:
@@ -290,6 +288,18 @@ def apply_to_jobs(job_title: str, location: str, auto_apply: bool = True) -> Non
                             submit_button.click()
                             time.sleep(1)
                             logger.info("[Job %d] Application submitted!", index + 1)
+                            # Here, you can now collect the details for tracking.
+                            # For example:
+                            try:
+                                company_elem = driver.find_element(By.CSS_SELECTOR, ".job-card-container__company-name")
+                                company_name = company_elem.text.strip()
+                            except Exception:
+                                company_name = "N/A"
+                            job_level = "N/A"      # Extraction logic can be added.
+                            salary_range = "N/A"   # Extraction logic can be added.
+                            application_link = driver.current_url
+                            logger.info("Application details: Company: %s, Job Title: %s, Link: %s",
+                                        company_name, job_title, application_link)
                         except Exception as submit_error:
                             logger.error("[Job %d] Could not submit application automatically: %s", index + 1, submit_error)
                 else:
