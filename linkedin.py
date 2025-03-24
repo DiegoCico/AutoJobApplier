@@ -15,7 +15,7 @@ will be printed to the console.
 
 import argparse
 import logging
-from backend import apply_to_jobs
+from linkedin_backend import apply_to_jobs
 
 def main() -> None:
     """

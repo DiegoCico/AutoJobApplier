@@ -10,9 +10,6 @@ It uses Selenium WebDriver (configured for Safari) to:
   - Search for a given job title and location
   - Attempt to apply using the "Easy Apply" feature (including attaching a resume from Resources/resume.pdf)
 
-If a two-step verification prompt is detected during login, the script will prompt the
-user via the console for the verification code.
-
 During the application process, if additional questions (e.g. "Years coding in React")
 are encountered, the driver checks a local SQLite database (Resources/questions.db) for an answer.
 If no answer exists, the user is prompted via the console, and the answer is saved for future use.
@@ -22,7 +19,6 @@ Detailed logging is provided throughout for debugging purposes.
 
 import logging
 import os
-import sqlite3
 import time
 from typing import Dict
 
@@ -33,14 +29,15 @@ from selenium.webdriver.common.keys import Keys
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 
-# Configure logging (front-end controls overall log level).
+from databaseHandler.db_handler import get_db_connection
+
+# Configure logging
 logging.basicConfig(
     level=logging.DEBUG,
     format="%(asctime)s [%(levelname)s] %(message)s",
     handlers=[logging.StreamHandler()]
 )
 logger = logging.getLogger(__name__)
-
 
 def read_secrets(file_path: str = "secrets.config") -> Dict[str, str]:
     """
@@ -49,14 +46,12 @@ def read_secrets(file_path: str = "secrets.config") -> Dict[str, str]:
     The file should contain lines in the following format:
         username_linkedin=your_email@example.com
         password_linkedin=your_password
-        spreadsheet_tracker=YOUR_EDITABLE_SHEET_URL
 
     Args:
         file_path (str): Path to the configuration file.
 
     Returns:
-        Dict[str, str]: A dictionary with keys 'username_linkedin',
-                        'password_linkedin', and 'spreadsheet_tracker'.
+        Dict[str, str]: A dictionary with keys such as 'username_linkedin' and 'password_linkedin'.
     """
     logger.debug("Reading secrets from %s", file_path)
     secrets: Dict[str, str] = {}
@@ -67,11 +62,10 @@ def read_secrets(file_path: str = "secrets.config") -> Dict[str, str]:
                 if line and "=" in line:
                     key, value = line.split("=", 1)
                     secrets[key.strip()] = value.strip()
-        logger.info("Successfully read secrets.config")
+        logger.info("Successfully read secrets from %s", file_path)
     except Exception as e:
         logger.error("Error reading secrets.config: %s", e)
     return secrets
-
 
 def login_to_linkedin(driver: WebDriver) -> None:
     """
@@ -135,7 +129,6 @@ def login_to_linkedin(driver: WebDriver) -> None:
         logger.error("Login might have failed. Current URL: %s", driver.current_url)
         raise Exception("Login did not complete successfully.") from e
 
-
 def process_application_questions(driver: WebDriver) -> None:
     """
     Process application questions in the "Easy Apply" modal.
@@ -143,17 +136,14 @@ def process_application_questions(driver: WebDriver) -> None:
     Searches for question groups (each containing a label and an input or textarea).
     For each question, if an answer exists in the local SQLite database (Resources/questions.db),
     that answer is used to fill in the field. If no answer exists, the user is prompted via
-    the console, and the provided answer is saved to the database.
+    the console, and the provided answer is saved for future use.
 
     Args:
         driver (WebDriver): Selenium WebDriver instance.
     """
-    db_path = os.path.abspath(os.path.join("Resources", "questions.db"))
-    logger.debug("Connecting to questions database at %s", db_path)
-    conn = sqlite3.connect(db_path)
+    # Connect to the questions database using our handler
+    conn = get_db_connection()
     cursor = conn.cursor()
-    cursor.execute("CREATE TABLE IF NOT EXISTS questions (question TEXT PRIMARY KEY, answer TEXT)")
-    conn.commit()
 
     try:
         question_groups = driver.find_elements(By.CSS_SELECTOR, "div.jobs-easy-apply-form-section__group")
@@ -190,7 +180,6 @@ def process_application_questions(driver: WebDriver) -> None:
         conn.close()
         logger.debug("Closed questions database connection")
 
-
 def apply_to_jobs(job_title: str, location: str, auto_apply: bool = True) -> None:
     """
     Automate job search and application on LinkedIn.
@@ -208,6 +197,7 @@ def apply_to_jobs(job_title: str, location: str, auto_apply: bool = True) -> Non
     """
     logger.info("Starting job application process for '%s' jobs in '%s'", job_title, location)
     
+    # Initialize WebDriver (using Safari; change if needed)
     try:
         driver = webdriver.Safari()
         logger.debug("Initialized Safari WebDriver")
@@ -216,24 +206,21 @@ def apply_to_jobs(job_title: str, location: str, auto_apply: bool = True) -> Non
         return
     
     try:
+        # Login to LinkedIn
         login_to_linkedin(driver)
         
+        # Navigate to the LinkedIn Jobs page
         driver.get("https://www.linkedin.com/jobs")
         logger.debug("Navigated to LinkedIn Jobs page")
         wait = WebDriverWait(driver, 20)
         
-        logger.debug("Locating the job keyword search field")
+        # Locate search fields and enter job title and location
         search_box = wait.until(EC.presence_of_element_located(
             (By.CSS_SELECTOR, "input.jobs-search-box__text-input--keyword")
         ))
-        logger.debug("Job keyword search field found")
-        
-        logger.debug("Locating the location search field")
         location_box = wait.until(EC.presence_of_element_located(
             (By.CSS_SELECTOR, "input.jobs-search-box__text-input--location")
         ))
-        logger.debug("Location search field found")
-        
         search_box.clear()
         search_box.send_keys(job_title)
         logger.debug("Entered job title: %s", job_title)
@@ -244,7 +231,7 @@ def apply_to_jobs(job_title: str, location: str, auto_apply: bool = True) -> Non
         location_box.send_keys(Keys.RETURN)
         logger.info("Submitted search criteria")
         
-        logger.debug("Waiting for job results to load")
+        # Wait for job results to load
         jobs = wait.until(EC.presence_of_all_elements_located(
             (By.CSS_SELECTOR, "ul.jobs-search-results__list li")
         ))
@@ -259,58 +246,62 @@ def apply_to_jobs(job_title: str, location: str, auto_apply: bool = True) -> Non
                 logger.debug("Clicked on job posting #%d", index + 1)
                 time.sleep(2)
                 
+                # Extract job description from the details panel
+                try:
+                    description_elem = driver.find_element(By.CSS_SELECTOR, "div.jobs-box__html-content")
+                    description = description_elem.text
+                except Exception as e:
+                    logger.error("Could not extract job description for job #%d: %s", index + 1, e)
+                    description = "Unknown"
+                
+                # In this version, we do not extract skills using AI.
+                skills = "N/A"
+                
+                # Process application questions if the Easy Apply modal appears
                 easy_apply_buttons = driver.find_elements(By.XPATH, "//button[contains(@class, 'jobs-apply-button')]")
                 if easy_apply_buttons:
-                    logger.info("[Job %d] 'Easy Apply' button found.", index + 1)
+                    logger.info("Easy Apply button found for job #%d", index + 1)
                     if auto_apply:
                         easy_apply_buttons[0].click()
-                        logger.debug("[Job %d] Clicked 'Easy Apply' button.", index + 1)
+                        logger.debug("Clicked Easy Apply button for job #%d", index + 1)
                         wait.until(EC.visibility_of_element_located(
                             (By.XPATH, "//div[contains(@class, 'jobs-easy-apply-modal')]")
                         ))
-                        logger.debug("[Job %d] Application modal is visible.", index + 1)
                         time.sleep(1)
-                        
                         process_application_questions(driver)
                         
+                        # Attempt to upload resume if available
                         try:
                             resume_upload = driver.find_element(By.XPATH, "//input[@type='file']")
-                            if resume_upload:
-                                resume_path = os.path.abspath(os.path.join("Resources", "resume.pdf"))
-                                resume_upload.send_keys(resume_path)
-                                time.sleep(1)
-                                logger.info("[Job %d] Resume attached from %s.", index + 1, resume_path)
+                            resume_path = os.path.abspath(os.path.join("Resources", "resume.pdf"))
+                            resume_upload.send_keys(resume_path)
+                            time.sleep(1)
+                            logger.info("Attached resume from %s for job #%d", resume_path, index + 1)
                         except Exception as resume_error:
-                            logger.debug("[Job %d] No resume upload field found: %s", index + 1, resume_error)
+                            logger.debug("No resume upload field found for job #%d: %s", index + 1, resume_error)
                         
+                        # Submit the application
                         try:
                             submit_button = driver.find_element(By.XPATH, "//button[contains(text(), 'Submit application')]")
                             submit_button.click()
-                            time.sleep(1)
-                            logger.info("[Job %d] Application submitted!", index + 1)
-                            # Here, you can now collect the details for tracking.
-                            # For example:
-                            try:
-                                company_elem = driver.find_element(By.CSS_SELECTOR, ".job-card-container__company-name")
-                                company_name = company_elem.text.strip()
-                            except Exception:
-                                company_name = "N/A"
-                            job_level = "N/A"      # Extraction logic can be added.
-                            salary_range = "N/A"   # Extraction logic can be added.
-                            application_link = driver.current_url
-                            logger.info("Application details: Company: %s, Job Title: %s, Link: %s",
-                                        company_name, job_title, application_link)
+                            time.sleep(2)
+                            logger.info("Submitted application for job #%d", index + 1)
                         except Exception as submit_error:
-                            logger.error("[Job %d] Could not submit application automatically: %s", index + 1, submit_error)
+                            logger.error("Could not submit application for job #%d: %s", index + 1, submit_error)
+                    else:
+                        logger.info("Auto-apply disabled for job #%d", index + 1)
                 else:
-                    logger.info("[Job %d] 'Easy Apply' not available.", index + 1)
+                    logger.info("Easy Apply not available for job #%d", index + 1)
+                
             except Exception as job_error:
-                logger.error("[Job %d] Error processing job: %s", index + 1, job_error)
+                logger.error("Error processing job #%d: %s", index + 1, job_error)
                 continue
-    
     except Exception as main_error:
         logger.error("An error occurred during the job search process: %s", main_error)
-    
     finally:
-        logger.info("Closing the browser.")
         driver.quit()
+        logger.info("Closed browser session.")
+
+if __name__ == "__main__":
+    # Example parameters – these can be set via command line arguments if desired.
+    apply_to_jobs("Software Development Engineer", "United States", auto_apply=True)
