@@ -9,3 +9,5 @@ secrets.config
 env
 
 __pycache__
+
+testVersions/Linkedin/config.yaml

@@ -1,0 +1,7 @@
+./logs/24-Mar-25 19:18:47::__main__::INFO::{'phone_number': 3059888058, 'profile_path': '', 'positions': ['Software Engineer', 'Software Developer'], 'locations': ['United States'], 'salary': '120,000', 'rate': 50, 'uploads': {'Resume': '/Users/diegocicotoste/Documents/AutoJobApplier/Resources/Resume 3.2.pdf', 'Cover Letter': '/Users/diegocicotoste/Documents/AutoJobApplier/Resources/Resume 3.2.pdf'}, 'output_filename': ['/Users/diegocicotoste/Documents/AutoJobApplier/Resources/easyapplyOUT.csv'], 'experience_level': [1, 2, 3]}
+./logs/24-Mar-25 19:18:47::__main__::INFO::Welcome to Easy Apply Bot
+./logs/24-Mar-25 19:18:47::__main__::INFO::current directory is : /Users/diegocicotoste/Documents/AutoJobApplier
+./logs/24-Mar-25 19:18:47::__main__::INFO::Please wait while we prepare the bot for you
+./logs/24-Mar-25 19:18:47::__main__::INFO::Applying for experience level roles: Entry level, Associate, Mid-Senior level
+./logs/24-Mar-25 19:18:47::__main__::INFO::[Errno 2] No such file or directory: '/Users/diegocicotoste/Documents/AutoJobApplier/Resources/easyapplyOUT.csv'   jobIDs could not be loaded from CSV /Users/diegocicotoste/Documents/AutoJobApplier/Resources/easyapplyOUT.csv
+./logs/24-Mar-25 19:18:50::__main__::INFO::Logging in.....Please wait :)  
